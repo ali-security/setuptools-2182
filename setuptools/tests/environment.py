@@ -74,14 +74,10 @@ def run_setup_py(cmd, pypath=None, path=None,
         proc = _Popen(
             cmd, stdout=_PIPE, stderr=_PIPE, shell=shell, env=env,
         )
-        try:
-            if isinstance(data_stream, tuple):
-                data_stream = slice(*data_stream)
-            data = proc.communicate()[data_stream]
-        finally:
-            # Ensure process is properly closed to avoid ResourceWarning
-            proc.stdout.close()
-            proc.stderr.close()
+
+        if isinstance(data_stream, tuple):
+            data_stream = slice(*data_stream)
+        data = proc.communicate()[data_stream]
     except OSError:
         return 1, ''
 
