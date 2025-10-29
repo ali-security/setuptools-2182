@@ -800,9 +800,9 @@ class PackageIndex(Environment):
         >>> import pathlib
         >>> du = PackageIndex._resolve_download_filename
         >>> root = getfixture('tmp_path')
-        >>> url = 'https://files.pythonhosted.org/packages/a9/5a/0db.../setuptools-78.1.0.tar.gz'
+        >>> url = 'https://www.example.com/path/setuptools-1.1.0.tar.gz'
         >>> str(pathlib.Path(du(url, root)).relative_to(root))
-        'setuptools-78.1.0.tar.gz'
+        'setuptools-1.1.0.tar.gz'
 
         Ensures the target is always in tmpdir.
 
