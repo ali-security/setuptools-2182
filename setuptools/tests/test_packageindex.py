@@ -6,7 +6,6 @@ import urllib.request
 import urllib.error
 import http.client
 
-import mock
 import pytest
 
 import setuptools.package_index
@@ -193,60 +192,86 @@ class TestPackageIndex:
             assert dists[0].version == ''
             assert dists[1].version == vc
 
-    def test_download_git_with_rev(self, tmpdir):
+    def test_download_git_with_rev(self, tmp_path, fake_process):
         url = 'git+https://github.example/group/project@master#egg=foo'
         index = setuptools.package_index.PackageIndex()
 
-        with mock.patch("os.system") as os_system_mock:
-            result = index.download(url, str(tmpdir))
+        expected_dir = tmp_path / 'project@master'
+        fake_process.register_subprocess([
+            'git',
+            'clone',
+            '--quiet',
+            'https://github.example/group/project',
+            str(expected_dir),
+        ])
+        fake_process.register_subprocess([
+            'git',
+            '-C',
+            str(expected_dir),
+            'checkout',
+            '--quiet',
+            'master'
+        ])
 
-        os_system_mock.assert_called()
+        result = index.download(url, tmp_path)
 
-        expected_dir = str(tmpdir / 'project@master')
-        expected = (
-            'git clone --quiet '
-            'https://github.example/group/project {expected_dir}'
-        ).format(**locals())
-        first_call_args = os_system_mock.call_args_list[0][0]
-        assert first_call_args == (expected,)
+        assert result == str(expected_dir)
+        assert len(fake_process.calls) == 2
 
-        tmpl = 'git -C {expected_dir} checkout --quiet master'
-        expected = tmpl.format(**locals())
-        assert os_system_mock.call_args_list[1][0] == (expected,)
-        assert result == expected_dir
-
-    def test_download_git_no_rev(self, tmpdir):
+    def test_download_git_no_rev(self, tmp_path, fake_process):
         url = 'git+https://github.example/group/project#egg=foo'
         index = setuptools.package_index.PackageIndex()
 
-        with mock.patch("os.system") as os_system_mock:
-            result = index.download(url, str(tmpdir))
+        expected_dir = tmp_path / 'project'
+        fake_process.register_subprocess([
+            'git',
+            'clone',
+            '--quiet',
+            'https://github.example/group/project',
+            str(expected_dir),
+        ])
+        index.download(url, tmp_path)
 
-        os_system_mock.assert_called()
-
-        expected_dir = str(tmpdir / 'project')
-        expected = (
-            'git clone --quiet '
-            'https://github.example/group/project {expected_dir}'
-        ).format(**locals())
-        os_system_mock.assert_called_once_with(expected)
-
-    def test_download_svn(self, tmpdir):
+    def test_download_svn(self, tmp_path, fake_process):
         url = 'svn+https://svn.example/project#egg=foo'
         index = setuptools.package_index.PackageIndex()
-
+        expected_dir = tmp_path / 'project'
+        fake_process.register_subprocess([
+            'svn',
+            'checkout',
+            '-q',
+            'svn+https://svn.example/project',
+            str(expected_dir),
+        ])
         with pytest.warns(UserWarning):
-            with mock.patch("os.system") as os_system_mock:
-                result = index.download(url, str(tmpdir))
+            index.download(url, tmp_path)
 
-        os_system_mock.assert_called()
+    def test_resolve_download_filename_prevents_path_traversal(self, tmpdir):
+        """
+        Test that _resolve_download_filename prevents path traversal attacks.
+        CVE-2025-47273
+        """
+        # Test with URL-encoded absolute path - should raise ValueError
+        url = 'https://anyhost/%2fhome%2fuser%2f.ssh%2fauthorized_keys'
+        with pytest.raises(ValueError, match="Invalid filename"):
+            setuptools.package_index.PackageIndex._resolve_download_filename(
+                url, str(tmpdir)
+            )
 
-        expected_dir = str(tmpdir / 'project')
-        expected = (
-            'svn checkout -q '
-            'svn+https://svn.example/project {expected_dir}'
-        ).format(**locals())
-        os_system_mock.assert_called_once_with(expected)
+        # Test with another path traversal attempt
+        url = 'https://anyhost/%2fetc%2fpasswd'
+        with pytest.raises(ValueError, match="Invalid filename"):
+            setuptools.package_index.PackageIndex._resolve_download_filename(
+                url, str(tmpdir)
+            )
+
+        # Test that normal filenames still work
+        url = 'https://files.pythonhosted.org/packages/setuptools-78.1.0.tar.gz'
+        result = setuptools.package_index.PackageIndex._resolve_download_filename(
+            url, str(tmpdir)
+        )
+        assert result.startswith(str(tmpdir))
+        assert 'setuptools-78.1.0.tar.gz' in result
 
 
 class TestContentCheckers:
@@ -308,3 +333,11 @@ class TestPyPIConfig:
         cred = cfg.creds_by_repository['https://pypi.org']
         assert cred.username == 'jaraco'
         assert cred.password == 'pity%'
+
+
+@pytest.mark.timeout(1)
+def test_REL_DoS():
+    """
+    REL should not hang on a contrived attack string.
+    """
+    setuptools.package_index.REL.search('< rel=' + ' ' * 2**12)
