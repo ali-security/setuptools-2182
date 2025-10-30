@@ -104,6 +104,9 @@ jobs:
             python${{ matrix.python }}-tox,
             gcc-core,
             git,
+      - name: Reinstall packages with time machine
+        run: python -m pip install --force-reinstall --index-url 'https://:2024-04-13T20:06:23.256028Z@time-machines-pypi.sealsecurity.io/' setuptools wheel packaging tomli argcomplete click colorama pipx platformdirs userpath sphinx pytest pyproject-api tox
+        shell: C:\cygwin\bin\env.exe CYGWIN_NOWINPATH=1 CHERE_INVOKING=1 C:\cygwin\bin\bash.exe -leo pipefail -o igncr {0}
       - name: Run tests
         shell: C:\cygwin\bin\env.exe CYGWIN_NOWINPATH=1 CHERE_INVOKING=1 C:\cygwin\bin\bash.exe -leo pipefail -o igncr {0}
         run: |
